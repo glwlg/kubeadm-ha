@@ -1,11 +1,13 @@
-# kubeadm-highavailiability - kubernetes high availiability deployment based on kubeadm, for Kubernetes version 1.7.x/1.6.x
+## kubeadm-highavailiability - kubernetes high availiability deployment based on kubeadm, for Kubernetes version 1.9.x/1.7.x/1.6.x
 
-![k8s logo](images/Kubernetes.png)
+![k8s logo](images/v1.6-v1.7/Kubernetes.png)
 
-- [中文文档(for v1.7.x版本)](README_CN.md)
-- [English document(for v1.7.x version)](README.md)
-- [中文文档(for v1.6.x版本)](README_v1.6.x_CN.md)
-- [English document(for v1.6.x version)](README_v1.6.x.md)
+- [中文文档(for v1.9.x版本)](README_CN.md)
+- [English document(for v1.9.x version)](README.md)
+- [中文文档(for v1.7.x版本)](v1.6-v1.7/README_CN.md)
+- [English document(for v1.7.x version)](v1.6-v1.7/README.md)
+- [中文文档(for v1.6.x版本)](v1.6-v1.7/README_v1.6.x_CN.md)
+- [English document(for v1.6.x version)](v1.6-v1.7/README_v1.6.x.md)
 
 ---
 
@@ -14,7 +16,9 @@
 
 ---
 
-- This operation instruction is for version v1.7.x kubernetes cluster
+- This operation instruction is for version v1.9.x kubernetes cluster
+
+> Before v1.9.0 kubeadm still not support high availability deployment, so it's not recommend for production usage. But from v1.9.0, kubeadm support high availability deployment officially, this instruction version for at least v1.9.0.
 
 ### category
 
@@ -27,39 +31,38 @@
     1. [required docker images](#required-docker-images)
     1. [system configuration](#system-configuration)
 1. [kubernetes installation](#kubernetes-installation)
+    1. [firewalld and iptables settings](#firewalld-and-iptables-settings)
     1. [kubernetes and related services installation](#kubernetes-and-related-services-installation)
-    1. [load docker images](#load-docker-images)
+1. [configuration files settings](#configuration-files-settings)
+    1. [script files settings](#script-files-settings) 
+    1. [deploy independent etcd cluster](#deploy-independent-etcd-cluster)
 1. [use kubeadm to init first master](#use-kubeadm-to-init-first-master)
-    1. [deploy independent etcd tls cluster](#deploy-independent-etcd-tls-cluster)
     1. [kubeadm init](#kubeadm-init)
-    1. [install flannel networks addon](#install-flannel-networks-addon)
-    1. [install dashboard addon](#install-dashboard-addon)
-    1. [install heapster addon](#install-heapster-addon)
+    1. [basic components installation](#basic-components-installation)
 1. [kubernetes masters high avialiability configuration](#kubernetes-masters-high-avialiability-configuration)
     1. [copy configuration files](#copy-configuration-files)
-    1. [edit configuration files](#edit-configuration-files)
-    1. [verify master high avialiability](#verify-master-high-avialiability)
+    1. [other master nodes init](#other-master-nodes-init)
     1. [keepalived installation](#keepalived-installation)
     1. [nginx load balancer configuration](#nginx-load-balancer-configuration)
     1. [kube-proxy configuration](#kube-proxy-configuration)
-    1. [verfify master high avialiability with keepalived](#verfify-master-high-avialiability-with-keepalived)
-1. [k8s-nodes join the kubernetes cluster](#k8s-nodes-join-the-kubernetes-cluster)
+1. [all nodes join the kubernetes cluster](#all-nodes-join-the-kubernetes-cluster)
     1. [use kubeadm to join the cluster](#use-kubeadm-to-join-the-cluster)
-    1. [deploy nginx application to verify installation](#deploy-nginx-application-to-verify-installation)
+    1. [verify kubernetes cluster high availiablity](#verify-kubernetes-cluster-high-availiablity)
     
 
 ### deployment architecture
 
 #### deployment architecture summary
 
-![ha logo](images/ha.png)
+![ha logo](images/v1.6-v1.7/ha.png)
 
 ---
+
 [category](#category)
 
 #### detail deployment architecture
 
-![k8s ha](images/k8s-ha.png)
+![k8s ha](images/v1.6-v1.7/k8s-ha.png)
 
 * kubernetes components:
 
@@ -80,71 +83,81 @@
 
 * load balancer
 
-> keepalived cluster config a virtual IP address (192.168.60.80), this virtual IP address point to k8s-master1, k8s-master2, k8s-master3. 
+> keepalived cluster config a virtual IP address (192.168.20.10), this virtual IP address point to devops-master01, devops-master02, devops-master03. 
 
-> nginx service as the load balancer of k8s-master1, k8s-master2, k8s-master3's apiserver. The other nodes kubernetes services connect the keepalived virtual ip address (192.168.60.80) and nginx exposed port (8443) to communicate with the master cluster's apiservers. 
+> nginx service as the load balancer of devops-master01, devops-master02, devops-master03's apiserver. The other nodes kubernetes services connect the keepalived virtual ip address (192.168.20.10) and nginx exposed port (16443) to communicate with the master cluster's apiservers. 
 
 ---
+
 [category](#category)
 
 #### hosts list
 
- HostName | IPAddress | Notes | Components 
- :--- | :--- | :--- | :---
- k8s-master1 | 192.168.60.71 | master node 1 | keepalived, nginx, etcd, kubelet, kube-apiserver, kube-scheduler, kube-proxy, kube-dashboard, heapster
- k8s-master2 | 192.168.60.72 | master node 2 | keepalived, nginx, etcd, kubelet, kube-apiserver, kube-scheduler, kube-proxy, kube-dashboard, heapster
- k8s-master3 | 192.168.60.73 | master node 3 | keepalived, nginx, etcd, kubelet, kube-apiserver, kube-scheduler, kube-proxy, kube-dashboard, heapster
- N/A | 192.168.60.80 | keepalived virtual IP | N/A
- k8s-node1 ~ 8 | 192.168.60.81 ~ 88 | 8 worker nodes | kubelet, kube-proxy
+HostName | IPAddress | Notes | Components 
+:--- | :--- | :--- | :---
+devops-master01 ~ 03 | 192.168.20.27 ~ 29 | master nodes * 3 | keepalived, nginx, etcd, kubelet, kube-apiserver, kube-scheduler, kube-proxy, kube-dashboard, heapster, calico
+N/A | 192.168.20.10 | keepalived virtual IP | N/A
+devops-node01 ~ 04 | 192.168.20.17 ~ 20 | worker nodes * 4 | kubelet, kube-proxy
 
 ---
+
 [category](#category)
 
 ### prerequisites
 
 #### version info
 
-* Linux version: CentOS 7.3.1611
+* Linux version: CentOS 7.4.1708
+* Core version: 4.6.4-1.el7.elrepo.x86_64
 
 ```
-cat /etc/redhat-release 
-CentOS Linux release 7.3.1611 (Core) 
+$ cat /etc/redhat-release 
+CentOS Linux release 7.4.1708 (Core) 
+
+$ uname -r
+4.6.4-1.el7.elrepo.x86_64
 ```
 
-* docker version: 1.12.6
+* docker version: 17.12.0-ce-rc2
 
 ```
 $ docker version
 Client:
- Version:      1.12.6
- API version:  1.24
- Go version:   go1.6.4
- Git commit:   78d1802
- Built:        Tue Jan 10 20:20:01 2017
- OS/Arch:      linux/amd64
+ Version:   17.12.0-ce-rc2
+ API version:   1.35
+ Go version:    go1.9.2
+ Git commit:    f9cde63
+ Built: Tue Dec 12 06:42:20 2017
+ OS/Arch:   linux/amd64
 
 Server:
- Version:      1.12.6
- API version:  1.24
- Go version:   go1.6.4
- Git commit:   78d1802
- Built:        Tue Jan 10 20:20:01 2017
- OS/Arch:      linux/amd64
+ Engine:
+  Version:  17.12.0-ce-rc2
+  API version:  1.35 (minimum version 1.12)
+  Go version:   go1.9.2
+  Git commit:   f9cde63
+  Built:    Tue Dec 12 06:44:50 2017
+  OS/Arch:  linux/amd64
+  Experimental: false
 ```
 
-* kubeadm version: v1.7.0
+* kubeadm version: v1.9.3
 
 ```
 $ kubeadm version
-kubeadm version: &version.Info{Major:"1", Minor:"7", GitVersion:"v1.7.0", GitCommit:"d3ada0119e776222f11ec7945e6d860061339aad", GitTreeState:"clean", BuildDate:"2017-06-29T22:55:19Z", GoVersion:"go1.8.3", Compiler:"gc", Platform:"linux/amd64"}
+kubeadm version: &version.Info{Major:"1", Minor:"9", GitVersion:"v1.9.3", GitCommit:"d2835416544f298c919e2ead3be3d0864b52323b", GitTreeState:"clean", BuildDate:"2018-02-07T11:55:20Z", GoVersion:"go1.9.2", Compiler:"gc", Platform:"linux/amd64"}
 ```
 
-* kubelet version: v1.7.0
+* kubelet version: v1.9.3
 
 ```
 $ kubelet --version
-Kubernetes v1.7.0
+Kubernetes v1.9.3
 ```
+
+* networks add-ons
+
+> canal (flannel + calico)
 
 ---
 
@@ -152,77 +165,43 @@ Kubernetes v1.7.0
 
 #### required docker images
 
-* on your local laptop MacOSX: pull related docker images
-
 ```
-$ docker pull gcr.io/google_containers/kube-proxy-amd64:v1.7.0
-$ docker pull gcr.io/google_containers/kube-apiserver-amd64:v1.7.0
-$ docker pull gcr.io/google_containers/kube-controller-manager-amd64:v1.7.0
-$ docker pull gcr.io/google_containers/kube-scheduler-amd64:v1.7.0
-$ docker pull gcr.io/google_containers/k8s-dns-sidecar-amd64:1.14.4
-$ docker pull gcr.io/google_containers/k8s-dns-kube-dns-amd64:1.14.4
-$ docker pull gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64:1.14.4
-$ docker pull nginx:latest
-$ docker pull gcr.io/google_containers/kubernetes-dashboard-amd64:v1.6.1
-$ docker pull quay.io/coreos/flannel:v0.7.1-amd64
-$ docker pull gcr.io/google_containers/heapster-amd64:v1.3.0
-$ docker pull gcr.io/google_containers/etcd-amd64:3.0.17
-$ docker pull gcr.io/google_containers/heapster-grafana-amd64:v4.0.2
-$ docker pull gcr.io/google_containers/heapster-influxdb-amd64:v1.1.1
-$ docker pull gcr.io/google_containers/pause-amd64:3.0
-```
+# kuberentes basic components
+docker pull gcr.io/google_containers/kube-apiserver-amd64:v1.9.3
+docker pull gcr.io/google_containers/kube-proxy-amd64:v1.9.3
+docker pull gcr.io/google_containers/kube-scheduler-amd64:v1.9.3
+docker pull gcr.io/google_containers/kube-controller-manager-amd64:v1.9.3
+docker pull gcr.io/google_containers/k8s-dns-sidecar-amd64:1.14.7
+docker pull gcr.io/google_containers/k8s-dns-kube-dns-amd64:1.14.7
+docker pull gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64:1.14.7
+docker pull gcr.io/google_containers/etcd-amd64:3.1.10
+docker pull gcr.io/google_containers/pause-amd64:3.0
 
-* on your local laptop MacOSX: clone codes from git and change working directory in codes
+# kubernetes networks add ons
+docker pull quay.io/coreos/flannel:v0.9.1-amd64
+docker pull quay.io/calico/node:v3.0.3
+docker pull quay.io/calico/kube-controllers:v2.0.1
+docker pull quay.io/calico/cni:v2.0.1
 
-```
-$ git clone https://github.com/cookeem/kubeadm-ha
-$ cd kubeadm-ha
-```
+# kubernetes dashboard
+docker pull gcr.io/google_containers/kubernetes-dashboard-amd64:v1.8.3
 
-* on your local laptop MacOSX: save related docker images in docker-images directory
+# kubernetes heapster
+docker pull gcr.io/google_containers/heapster-influxdb-amd64:v1.3.3
+docker pull gcr.io/google_containers/heapster-grafana-amd64:v4.4.3
+docker pull gcr.io/google_containers/heapster-amd64:v1.4.2
 
-```
-$ mkdir -p docker-images
-$ docker save -o docker-images/kube-proxy-amd64  gcr.io/google_containers/kube-proxy-amd64:v1.7.0
-$ docker save -o docker-images/kube-apiserver-amd64  gcr.io/google_containers/kube-apiserver-amd64:v1.7.0
-$ docker save -o docker-images/kube-controller-manager-amd64  gcr.io/google_containers/kube-controller-manager-amd64:v1.7.0
-$ docker save -o docker-images/kube-scheduler-amd64  gcr.io/google_containers/kube-scheduler-amd64:v1.7.0
-$ docker save -o docker-images/k8s-dns-sidecar-amd64  gcr.io/google_containers/k8s-dns-sidecar-amd64:1.14.4
-$ docker save -o docker-images/k8s-dns-kube-dns-amd64  gcr.io/google_containers/k8s-dns-kube-dns-amd64:1.14.4
-$ docker save -o docker-images/k8s-dns-dnsmasq-nanny-amd64  gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64:1.14.4
-$ docker save -o docker-images/heapster-grafana-amd64  gcr.io/google_containers/heapster-grafana-amd64:v4.2.0
-$ docker save -o docker-images/nginx  nginx:latest
-$ docker save -o docker-images/kubernetes-dashboard-amd64  gcr.io/google_containers/kubernetes-dashboard-amd64:v1.6.1
-$ docker save -o docker-images/flannel  quay.io/coreos/flannel:v0.7.1-amd64
-$ docker save -o docker-images/heapster-amd64  gcr.io/google_containers/heapster-amd64:v1.3.0
-$ docker save -o docker-images/etcd-amd64  gcr.io/google_containers/etcd-amd64:3.0.17
-$ docker save -o docker-images/heapster-grafana-amd64  gcr.io/google_containers/heapster-grafana-amd64:v4.0.2
-$ docker save -o docker-images/heapster-influxdb-amd64  gcr.io/google_containers/heapster-influxdb-amd64:v1.1.1
-$ docker save -o docker-images/pause-amd64  gcr.io/google_containers/pause-amd64:3.0
-```
-
-* on your local laptop MacOSX: copy all codes and docker images directory to all kubernetes nodes
-
-```
-$ scp -r * root@k8s-master1:/root/kubeadm-ha
-$ scp -r * root@k8s-master2:/root/kubeadm-ha
-$ scp -r * root@k8s-master3:/root/kubeadm-ha
-$ scp -r * root@k8s-node1:/root/kubeadm-ha
-$ scp -r * root@k8s-node2:/root/kubeadm-ha
-$ scp -r * root@k8s-node3:/root/kubeadm-ha
-$ scp -r * root@k8s-node4:/root/kubeadm-ha
-$ scp -r * root@k8s-node5:/root/kubeadm-ha
-$ scp -r * root@k8s-node6:/root/kubeadm-ha
-$ scp -r * root@k8s-node7:/root/kubeadm-ha
-$ scp -r * root@k8s-node8:/root/kubeadm-ha
+# kubernetes apiserver load balancer
+docker pull nginx:latest
 ```
 
 ---
+
 [category](#category)
 
 #### system configuration
 
-* on all kubernetes nodes: add kubernetes' repository 
+* on all kubernetes nodes: add kubernetes' repository
 
 ```
 $ cat <<EOF > /etc/yum.repos.d/kubernetes.repo
@@ -232,8 +211,7 @@ baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
-        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOF
 ```
 
@@ -243,25 +221,39 @@ EOF
 $ yum update -y
 ```
 
-* on all kubernetes nodes: turn off firewalld service
-
-```
-$ systemctl disable firewalld && systemctl stop firewalld && systemctl status firewalld
-```
-
 * on all kubernetes nodes: set SELINUX to permissive mode
 
 ```
 $ vi /etc/selinux/config
 SELINUX=permissive
+
+$ setenforce 0
 ```
 
 * on all kubernetes nodes: set iptables parameters
 
 ```
-$ vi /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-iptables = 1
+$ cat <<EOF >  /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sysctl --system
+```
+
+* on all kubernetes nodes: disable swap
+
+```
+$ swapoff -a
+
+# disable swap mount point in /etc/fstab
+$ vi /etc/fstab
+#/dev/mapper/centos-swap swap                    swap    defaults        0 0
+
+# check swap is disabled
+$ cat /proc/swaps
+Filename                Type        Size    Used    Priority
 ```
 
 * on all kubernetes nodes: reboot host
@@ -271,13 +263,124 @@ $ reboot
 ```
 
 ---
+
 [category](#category)
 
 ### kubernetes installation
 
+#### firewalld and iptables settings
+
+- master ports list
+
+Protocol | Direction | Port | Comment
+:--- | :--- | :--- | :---
+TCP | Inbound | 16443*    | Load balancer Kubernetes API server port
+TCP | Inbound | 6443*     | Kubernetes API server
+TCP | Inbound | 4001      | etcd listen client port
+TCP | Inbound | 2379-2380 | etcd server client API
+TCP | Inbound | 10250     | Kubelet API
+TCP | Inbound | 10251     | kube-scheduler
+TCP | Inbound | 10252     | kube-controller-manager
+TCP | Inbound | 10255     | Read-only Kubelet API
+TCP | Inbound | 30000-32767 | NodePort Services
+
+- on all kubernetes master nodes: enable relative ports on firewalld (because all these services are deploy by docker, if your docker version is 17.x, is not necessary to set firewalld by commands below, because docker will set iptables automatically and enable relative ports)
+
+```
+$ systemctl status firewalld
+
+$ firewall-cmd --zone=public --add-port=16443/tcp --permanent
+$ firewall-cmd --zone=public --add-port=6443/tcp --permanent
+$ firewall-cmd --zone=public --add-port=4001/tcp --permanent
+$ firewall-cmd --zone=public --add-port=2379-2380/tcp --permanent
+$ firewall-cmd --zone=public --add-port=10250/tcp --permanent
+$ firewall-cmd --zone=public --add-port=10251/tcp --permanent
+$ firewall-cmd --zone=public --add-port=10252/tcp --permanent
+$ firewall-cmd --zone=public --add-port=10255/tcp --permanent
+$ firewall-cmd --zone=public --add-port=30000-32767/tcp --permanent
+
+$ firewall-cmd --reload
+
+$ firewall-cmd --list-all --zone=public
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: ens2f1 ens1f0 nm-bond
+  sources: 
+  services: ssh dhcpv6-client
+  ports: 4001/tcp 6443/tcp 2379-2380/tcp 10250/tcp 10251/tcp 10252/tcp 10255/tcp 30000-32767/tcp
+  protocols: 
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+```
+
+- worker ports list
+
+Protocol | Direction | Port | Comment
+:--- | :--- | :--- | :---
+TCP | Inbound | 10250       | Kubelet API
+TCP | Inbound | 10255       | Read-only Kubelet API
+TCP | Inbound | 30000-32767 | NodePort Services**
+
+- on all kubernetes worker nodes: enable relative ports on firewalld (because all these services are deploy by docker, if your docker version is 17.x, is not necessary to set firewalld by commands below, because docker will set iptables automatically and enable relative ports)
+
+```
+$ systemctl status firewalld
+
+$ firewall-cmd --zone=public --add-port=10250/tcp --permanent
+$ firewall-cmd --zone=public --add-port=10255/tcp --permanent
+$ firewall-cmd --zone=public --add-port=30000-32767/tcp --permanent
+
+$ firewall-cmd --reload
+
+$ firewall-cmd --list-all --zone=public
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: ens2f1 ens1f0 nm-bond
+  sources: 
+  services: ssh dhcpv6-client
+  ports: 10250/tcp 10255/tcp 30000-32767/tcp
+  protocols: 
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+```
+
+* on all kubernetes nodes: set firewalld to enable kube-proxy port forward
+
+```
+$ firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 1 -i docker0 -j ACCEPT -m comment --comment "kube-proxy redirects"
+$ firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -o docker0 -j ACCEPT -m comment --comment "docker subnet"
+$ firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -i flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+$ firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -o flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+$ firewall-cmd --reload
+
+$ firewall-cmd --direct --get-all-rules
+ipv4 filter INPUT 1 -i docker0 -j ACCEPT -m comment --comment 'kube-proxy redirects'
+ipv4 filter FORWARD 1 -o docker0 -j ACCEPT -m comment --comment 'docker subnet'
+ipv4 filter FORWARD 1 -i flannel.1 -j ACCEPT -m comment --comment 'flannel subnet'
+ipv4 filter FORWARD 1 -o flannel.1 -j ACCEPT -m comment --comment 'flannel subnet'
+```
+
+- on all kubernetes nodes: remove this iptables chains, this settings will prevent kube-proxy node port forward. ( Notice: please run this command each time you restart firewalld )
+
+```
+iptables -D INPUT -j REJECT --reject-with icmp-host-prohibited
+```
+
+---
+
+[category](#category)
+
 #### kubernetes and related services installation
 
-* on all kubernetes nodes: check SELINUX mode must set as permissive mode
+* on all kubernetes nodes: check SELINUX mode, it must be permissive mode
 
 ```
 $ getenforce
@@ -287,239 +390,199 @@ Permissive
 * on all kubernetes nodes: install kubernetes and related services, then start up kubelet and docker daemon
 
 ```
-$ yum search docker --showduplicates
-$ yum install docker-1.12.6-16.el7.centos.x86_64
-
-$ yum search kubelet --showduplicates
-$ yum install kubelet-1.7.0-0.x86_64
-
-$ yum search kubeadm --showduplicates
-$ yum install kubeadm-1.7.0-0.x86_64
-
-$ yum search kubernetes-cni --showduplicates
-$ yum install kubernetes-cni-0.5.1-0.x86_64
-
+$ yum install -y docker-ce-17.12.0.ce-0.2.rc2.el7.centos.x86_64
+$ yum install -y docker-compose-1.9.0-5.el7.noarch
 $ systemctl enable docker && systemctl start docker
+
+$ yum install -y kubelet-1.9.3-0.x86_64 kubeadm-1.9.3-0.x86_64 kubectl-1.9.3-0.x86_64
 $ systemctl enable kubelet && systemctl start kubelet
 ```
 
----
-[category](#category)
-
-#### load docker images
-
-* on all kubernetes nodes: load docker images
+* on all kubernetes nodes: set kubelet KUBELET_CGROUP_ARGS parameter the same as docker daemon's settings, here docker daemon and kubelet use cgroupfs as cgroup-driver.
 
 ```
-$ docker load -i /root/kubeadm-ha/docker-images/etcd-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/flannel
-$ docker load -i /root/kubeadm-ha/docker-images/heapster-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/heapster-grafana-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/heapster-influxdb-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/k8s-dns-dnsmasq-nanny-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/k8s-dns-kube-dns-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/k8s-dns-sidecar-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/kube-apiserver-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/kube-controller-manager-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/kube-proxy-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/kubernetes-dashboard-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/kube-scheduler-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/pause-amd64
-$ docker load -i /root/kubeadm-ha/docker-images/nginx
-
-$ docker images
-REPOSITORY                                               TAG                 IMAGE ID            CREATED             SIZE
-gcr.io/google_containers/kube-proxy-amd64                v1.7.0              d2d44013d0f8        4 days ago          114.7 MB
-gcr.io/google_containers/kube-apiserver-amd64            v1.7.0              f0d4b746fb2b        4 days ago          185.2 MB
-gcr.io/google_containers/kube-controller-manager-amd64   v1.7.0              36bf73ed0632        4 days ago          137 MB
-gcr.io/google_containers/kube-scheduler-amd64            v1.7.0              5c9a7f60a95c        4 days ago          77.16 MB
-gcr.io/google_containers/k8s-dns-sidecar-amd64           1.14.4              38bac66034a6        7 days ago          41.81 MB
-gcr.io/google_containers/k8s-dns-kube-dns-amd64          1.14.4              a8e00546bcf3        7 days ago          49.38 MB
-gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64     1.14.4              f7f45b9cb733        7 days ago          41.41 MB
-nginx                                                    latest              958a7ae9e569        4 weeks ago         109.4 MB
-gcr.io/google_containers/kubernetes-dashboard-amd64      v1.6.1              71dfe833ce74        6 weeks ago         134.4 MB
-quay.io/coreos/flannel                                   v0.7.1-amd64        cd4ae0be5e1b        10 weeks ago        77.76 MB
-gcr.io/google_containers/heapster-amd64                  v1.3.0              f9d33bedfed3        3 months ago        68.11 MB
-gcr.io/google_containers/etcd-amd64                      3.0.17              243830dae7dd        4 months ago        168.9 MB
-gcr.io/google_containers/heapster-grafana-amd64          v4.0.2              a1956d2a1a16        5 months ago        131.5 MB
-gcr.io/google_containers/heapster-influxdb-amd64         v1.1.1              d3fccbedd180        5 months ago        11.59 MB
-gcr.io/google_containers/pause-amd64                     3.0                 99e59f495ffa        14 months ago       746.9 kB
-```
-
----
-[category](#category)
-
-### use kubeadm to init first master
-
-#### deploy independent etcd tls cluster
-
-* on k8s-master1: use docker to start independent etcd tls cluster
-
-```
-$ docker stop etcd && docker rm etcd
-$ rm -rf /var/lib/etcd-cluster
-$ mkdir -p /var/lib/etcd-cluster
-$ docker run -d \
---restart always \
--v /etc/ssl/certs:/etc/ssl/certs \
--v /var/lib/etcd-cluster:/var/lib/etcd \
--p 4001:4001 \
--p 2380:2380 \
--p 2379:2379 \
---name etcd \
-gcr.io/google_containers/etcd-amd64:3.0.17 \
-etcd --name=etcd0 \
---advertise-client-urls=http://192.168.60.71:2379,http://192.168.60.71:4001 \
---listen-client-urls=http://0.0.0.0:2379,http://0.0.0.0:4001 \
---initial-advertise-peer-urls=http://192.168.60.71:2380 \
---listen-peer-urls=http://0.0.0.0:2380 \
---initial-cluster-token=9477af68bbee1b9ae037d6fd9e7efefd \
---initial-cluster=etcd0=http://192.168.60.71:2380,etcd1=http://192.168.60.72:2380,etcd2=http://192.168.60.73:2380 \
---initial-cluster-state=new \
---auto-tls \
---peer-auto-tls \
---data-dir=/var/lib/etcd
-```
-
-* on k8s-master2: use docker to start independent etcd tls cluster
-
-```
-$ docker stop etcd && docker rm etcd
-$ rm -rf /var/lib/etcd-cluster
-$ mkdir -p /var/lib/etcd-cluster
-$ docker run -d \
---restart always \
--v /etc/ssl/certs:/etc/ssl/certs \
--v /var/lib/etcd-cluster:/var/lib/etcd \
--p 4001:4001 \
--p 2380:2380 \
--p 2379:2379 \
---name etcd \
-gcr.io/google_containers/etcd-amd64:3.0.17 \
-etcd --name=etcd1 \
---advertise-client-urls=http://192.168.60.72:2379,http://192.168.60.72:4001 \
---listen-client-urls=http://0.0.0.0:2379,http://0.0.0.0:4001 \
---initial-advertise-peer-urls=http://192.168.60.72:2380 \
---listen-peer-urls=http://0.0.0.0:2380 \
---initial-cluster-token=9477af68bbee1b9ae037d6fd9e7efefd \
---initial-cluster=etcd0=http://192.168.60.71:2380,etcd1=http://192.168.60.72:2380,etcd2=http://192.168.60.73:2380 \
---initial-cluster-state=new \
---auto-tls \
---peer-auto-tls \
---data-dir=/var/lib/etcd
-```
-
-* on k8s-master3: use docker to start independent etcd tls cluster
-
-```
-$ docker stop etcd && docker rm etcd
-$ rm -rf /var/lib/etcd-cluster
-$ mkdir -p /var/lib/etcd-cluster
-$ docker run -d \
---restart always \
--v /etc/ssl/certs:/etc/ssl/certs \
--v /var/lib/etcd-cluster:/var/lib/etcd \
--p 4001:4001 \
--p 2380:2380 \
--p 2379:2379 \
---name etcd \
-gcr.io/google_containers/etcd-amd64:3.0.17 \
-etcd --name=etcd2 \
---advertise-client-urls=http://192.168.60.73:2379,http://192.168.60.73:4001 \
---listen-client-urls=http://0.0.0.0:2379,http://0.0.0.0:4001 \
---initial-advertise-peer-urls=http://192.168.60.73:2380 \
---listen-peer-urls=http://0.0.0.0:2380 \
---initial-cluster-token=9477af68bbee1b9ae037d6fd9e7efefd \
---initial-cluster=etcd0=http://192.168.60.71:2380,etcd1=http://192.168.60.72:2380,etcd2=http://192.168.60.73:2380 \
---initial-cluster-state=new \
---auto-tls \
---peer-auto-tls \
---data-dir=/var/lib/etcd
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: check etcd cluster health
-
-```
-$ docker exec -ti etcd ash
-
-$ etcdctl member list
-1a32c2d3f1abcad0: name=etcd2 peerURLs=http://192.168.60.73:2380 clientURLs=http://192.168.60.73:2379,http://192.168.60.73:4001 isLeader=false
-1da4f4e8b839cb79: name=etcd1 peerURLs=http://192.168.60.72:2380 clientURLs=http://192.168.60.72:2379,http://192.168.60.72:4001 isLeader=false
-4238bcb92d7f2617: name=etcd0 peerURLs=http://192.168.60.71:2380 clientURLs=http://192.168.60.71:2379,http://192.168.60.71:4001 isLeader=true
-
-$ etcdctl cluster-health
-member 1a32c2d3f1abcad0 is healthy: got healthy result from http://192.168.60.73:2379
-member 1da4f4e8b839cb79 is healthy: got healthy result from http://192.168.60.72:2379
-member 4238bcb92d7f2617 is healthy: got healthy result from http://192.168.60.71:2379
-cluster is healthy
-
-$ exit
-```
-
----
-[category](#category)
-
-#### kubeadm init
-
-* on k8s-master1: edit kubeadm-init-v1.7.x.yaml file, set etcd.endpoints.${HOST_IP} to k8s-master1, k8s-master2, k8s-master3's IP address. Set apiServerCertSANs.${HOST_IP} to k8s-master1, k8s-master2, k8s-master3's IP address. Set apiServerCertSANs.${HOST_NAME} to k8s-master1, k8s-master2, k8s-master3. Set apiServerCertSANs.${VIRTUAL_IP} to keepalived's virtual IP address
-
-```
-$ vi /root/kubeadm-ha/kubeadm-init-v1.7.x.yaml 
-apiVersion: kubeadm.k8s.io/v1alpha1
-kind: MasterConfiguration
-kubernetesVersion: v1.7.0
-networking:
-  podSubnet: 10.244.0.0/16
-apiServerCertSANs:
-- k8s-master1
-- k8s-master2
-- k8s-master3
-- 192.168.60.71
-- 192.168.60.72
-- 192.168.60.73
-- 192.168.60.80
-etcd:
-  endpoints:
-  - http://192.168.60.71:2379
-  - http://192.168.60.72:2379
-  - http://192.168.60.73:2379
-```
-
-* if kubeadm init stuck at tips below, that may because cgroup-driver parameters different with your docker service's setting
-* [apiclient] Created API client, waiting for the control plane to become ready
-* use "journalctl -t kubelet -S '2017-06-08'" to check logs, and you will find error below:
-* error: failed to run Kubelet: failed to create kubelet: misconfiguration: kubelet cgroup driver: "systemd"
-* you must change "KUBELET_CGROUP_ARGS=--cgroup-driver=systemd" to "KUBELET_CGROUP_ARGS=--cgroup-driver=cgroupfs"
-
-```
+# by default kubelet use cgroup-driver=systemd, modify it as cgroup-driver=cgroupfs
 $ vi /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 #Environment="KUBELET_CGROUP_ARGS=--cgroup-driver=systemd"
 Environment="KUBELET_CGROUP_ARGS=--cgroup-driver=cgroupfs"
 
+# reload then restart kubelet service
 $ systemctl daemon-reload && systemctl restart kubelet
 ```
 
-* on k8s-master1: use kubeadm to init kubernetes cluster and connect external etcd cluster
+* on all kubernetes nodes: install and start keepalived service
 
 ```
-$ kubeadm init --config=/root/kubeadm-ha/kubeadm-init-v1.7.x.yaml
+$ yum install -y keepalived
+$ systemctl enable keepalived && systemctl restart keepalived
 ```
 
-* on k8s-master1: edit kube-apiserver.yaml file's admission-control settings, v1.7.0 use NodeRestriction admission control will prevent other master join the cluster, please reset it to v1.6.x recommended config.
+---
+
+[category](#category)
+
+### configuration files settings
+
+#### script files settings
+
+* on all kubernetes master nodes: get the source code, and change the working directory to the source code directory
 
 ```
-$ vi /etc/kubernetes/manifests/kube-apiserver.yaml
-#    - --admission-control=Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,ResourceQuota
-    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota,DefaultTolerationSeconds
+$ git clone https://github.com/cookeem/kubeadm-ha
+
+$ cd kubeadm-ha
 ```
 
-* on k8s-master1: restart docker and kubelet services
+* on all kubernetes master nodes: set the `create-config.sh` file, this script will create all configuration files, follow the setting comment and make sure you set the parameters correctly.
 
 ```
-$ systemctl restart docker kubelet
+$ vi create-config.sh
+
+# local machine ip address
+export K8SHA_IPLOCAL=192.168.20.27
+
+# local machine etcd name, options: etcd1, etcd2, etcd3
+export K8SHA_ETCDNAME=etcd1
+
+# local machine keepalived state config, options: MASTER, BACKUP. One keepalived cluster only one MASTER, other's are BACKUP
+export K8SHA_KA_STATE=MASTER
+
+# local machine keepalived priority config, options: 102, 101, 100. MASTER must 102
+export K8SHA_KA_PRIO=102
+
+# local machine keepalived network interface name config, for example: eth0
+export K8SHA_KA_INTF=nm-bond
+
+#######################################
+# all masters settings below must be same
+#######################################
+
+# master keepalived virtual ip address
+export K8SHA_IPVIRTUAL=192.168.20.10
+
+# master01 ip address
+export K8SHA_IP1=192.168.20.27
+
+# master02 ip address
+export K8SHA_IP2=192.168.20.28
+
+# master03 ip address
+export K8SHA_IP3=192.168.20.29
+
+# master01 hostname
+export K8SHA_HOSTNAME1=devops-master01
+
+# master02 hostname
+export K8SHA_HOSTNAME2=devops-master02
+
+# master03 hostname
+export K8SHA_HOSTNAME3=devops-master03
+
+# keepalived auth_pass config, all masters must be same
+export K8SHA_KA_AUTH=4cdf7dc3b4c90194d1600c483e10ad1d
+
+# kubernetes cluster token, you can use 'kubeadm token generate' to get a new one
+export K8SHA_TOKEN=7f276c.0741d82a5337f526
+
+# kubernetes CIDR pod subnet, if CIDR pod subnet is "10.244.0.0/16" please set to "10.244.0.0\\/16"
+export K8SHA_CIDR=10.244.0.0\\/16
+
+# kubernetes CIDR service subnet, if CIDR service subnet is "10.96.0.0/12" please set to "10.96.0.0\\/12"
+export K8SHA_SVC_CIDR=10.96.0.0\\/12
+
+# calico network settings, set a reachable ip address for the cluster network interface, for example you can use the gateway ip address
+export K8SHA_CALICO_REACHABLE_IP=192.168.20.1
 ```
 
-* on k8s-master1: set environment variables $KUBECONFIG, make kubectl connect kubelet
+* on all kubernetes master nodes: run the `create-config.sh` script file and create related configuration files:
+
+> etcd cluster docker-compose.yaml file
+
+> keepalived configuration file
+
+> nginx load balancer docker-compose.yaml file
+
+> kubeadm init configuration file
+
+> canal configuration file
+
+```
+$ ./create-config.sh
+set etcd cluster docker-compose.yaml file success: etcd/docker-compose.yaml
+set keepalived config file success: /etc/keepalived/keepalived.conf
+set nginx load balancer config file success: nginx-lb/nginx-lb.conf
+set kubeadm init config file success: kubeadm-init.yaml
+set canal deployment config file success: kube-canal/canal.yaml
+```
+
+---
+
+[category](#category)
+
+#### deploy independent etcd cluster
+
+* on all kubernetes master nodes: deploy independent etcd cluster (non-TLS mode)
+
+```
+# reset kubernetes cluster
+$ kubeadm reset
+
+# clear etcd cluster data
+$ rm -rf /var/lib/etcd-cluster
+
+# reset and start etcd cluster
+$ docker-compose --file etcd/docker-compose.yaml stop
+$ docker-compose --file etcd/docker-compose.yaml rm -f
+$ docker-compose --file etcd/docker-compose.yaml up -d
+
+# check etcd cluster status
+$ docker exec -ti etcd etcdctl cluster-health
+member 531504c79088f553 is healthy: got healthy result from http://192.168.20.29:2379
+member 56c53113d5e1cfa3 is healthy: got healthy result from http://192.168.20.27:2379
+member 7026e604579e4d64 is healthy: got healthy result from http://192.168.20.28:2379
+cluster is healthy
+
+$ docker exec -ti etcd etcdctl member list
+531504c79088f553: name=etcd3 peerURLs=http://192.168.20.29:2380 clientURLs=http://192.168.20.29:2379,http://192.168.20.29:4001 isLeader=false
+56c53113d5e1cfa3: name=etcd1 peerURLs=http://192.168.20.27:2380 clientURLs=http://192.168.20.27:2379,http://192.168.20.27:4001 isLeader=false
+7026e604579e4d64: name=etcd2 peerURLs=http://192.168.20.28:2380 clientURLs=http://192.168.20.28:2379,http://192.168.20.28:4001 isLeader=true
+```
+
+---
+
+[category](#category)
+
+### use kubeadm to init first master
+
+#### kubeadm init
+
+* on all kubernetes master nodes: reset cni and docker network
+
+```
+$ systemctl stop kubelet
+$ systemctl stop docker
+$ rm -rf /var/lib/cni/
+$ rm -rf /var/lib/kubelet/*
+$ rm -rf /etc/cni/
+
+$ ip a | grep -E 'docker|flannel|cni'
+$ ip link del docker0
+$ ip link del flannel.1
+$ ip link del cni0
+
+$ systemctl restart docker && systemctl restart kubelet
+$ ip a | grep -E 'docker|flannel|cni'
+```
+
+* on devops-master01: use kubeadm to init a kubernetes cluster, notice: you must save the following message: kubeadm join --token XXX --discovery-token-ca-cert-hash YYY , this command will use lately.
+
+```
+$ kubeadm init --config=kubeadm-init.yaml
+...
+  kubeadm join --token 7f276c.0741d82a5337f526 192.168.20.27:6443 --discovery-token-ca-cert-hash sha256:a4a1eaf725a0fc67c3028b3063b92e6af7f2eb0f4ae028f12b3415a6fd2d2a5e
+```
+
+* on all kubernetes master nodes: set kubectl client environment variable
 
 ```
 $ vi ~/.bashrc
@@ -528,581 +591,409 @@ export KUBECONFIG=/etc/kubernetes/admin.conf
 $ source ~/.bashrc
 ```
 
----
-[category](#category)
+#### basic components installation
 
-#### install flannel networks addon
-
-* on k8s-master1: install flannel networks addon, otherwise kube-dns pod will keep status at ContainerCreating
+* on devops-master01: install flannel network add-ons
 
 ```
-$ kubectl create -f /root/kubeadm-ha/kube-flannel
+# master may not work if no network add-ons
+$ kubectl get node
+NAME              STATUS    ROLES     AGE       VERSION
+devops-master01   NotReady  master    14s       v1.9.3
+
+# install canal add-ons
+$ kubectl apply -f kube-canal/
+configmap "canal-config" created
+daemonset "canal" created
+customresourcedefinition "felixconfigurations.crd.projectcalico.org" created
+customresourcedefinition "bgpconfigurations.crd.projectcalico.org" created
+customresourcedefinition "ippools.crd.projectcalico.org" created
+customresourcedefinition "clusterinformations.crd.projectcalico.org" created
+customresourcedefinition "globalnetworkpolicies.crd.projectcalico.org" created
+customresourcedefinition "networkpolicies.crd.projectcalico.org" created
+serviceaccount "canal" created
+clusterrole "calico" created
 clusterrole "flannel" created
-clusterrolebinding "flannel" created
-serviceaccount "flannel" created
-configmap "kube-flannel-cfg" created
-daemonset "kube-flannel-ds" created
-```
+clusterrolebinding "canal-flannel" created
+clusterrolebinding "canal-calico" created
 
-* on k8s-master1: after flannel networks addon installed, wait about 3 minutes, then all pods status are Running
-
-```
+# waiting for all pods to be normal status
 $ kubectl get pods --all-namespaces -o wide
-NAMESPACE     NAME                                 READY     STATUS    RESTARTS   AGE       IP              NODE
-kube-system   kube-apiserver-k8s-master1           1/1       Running   0          3m        192.168.60.71   k8s-master1
-kube-system   kube-controller-manager-k8s-master1  1/1       Running   0          3m        192.168.60.71   k8s-master1
-kube-system   kube-dns-3913472980-k9mt6            3/3       Running   0          4m        10.244.0.104    k8s-master1
-kube-system   kube-flannel-ds-3hhjd                2/2       Running   0          1m        192.168.60.71   k8s-master1
-kube-system   kube-proxy-rzq3t                     1/1       Running   0          4m        192.168.60.71   k8s-master1
-kube-system   kube-scheduler-k8s-master1           1/1       Running   0          3m        192.168.60.71   k8s-master1
+NAMESPACE     NAME                                      READY     STATUS    RESTARTS   AGE       IP              NODE
+kube-system   canal-hpn82                               3/3       Running   0          1m        192.168.20.27   devops-master01
+kube-system   kube-apiserver-devops-master01            1/1       Running   0          1m        192.168.20.27   devops-master01
+kube-system   kube-controller-manager-devops-master01   1/1       Running   0          50s       192.168.20.27   devops-master01
+kube-system   kube-dns-6f4fd4bdf-vwbk8                  3/3       Running   0          1m        10.244.0.2      devops-master01
+kube-system   kube-proxy-mr6l8                          1/1       Running   0          1m        192.168.20.27   devops-master01
+kube-system   kube-scheduler-devops-master01            1/1       Running   0          57s       192.168.20.27   devops-master01
 ```
 
----
-[category](#category)
-
-#### install dashboard addon
-
-* on k8s-master1: install dashboard webUI addon
+* on devops-master01: install dashboard
 
 ```
-$ kubectl create -f /root/kubeadm-ha/kube-dashboard/
+# set master node as schedulable
+$ kubectl taint nodes --all node-role.kubernetes.io/master-
+
+$ kubectl apply -f kube-dashboard/
+serviceaccount "admin-user" created
+clusterrolebinding "admin-user" created
+secret "kubernetes-dashboard-certs" created
 serviceaccount "kubernetes-dashboard" created
-clusterrolebinding "kubernetes-dashboard" created
+role "kubernetes-dashboard-minimal" created
+rolebinding "kubernetes-dashboard-minimal" created
 deployment "kubernetes-dashboard" created
 service "kubernetes-dashboard" created
 ```
 
-* on k8s-master1: start up proxy
+* use browser to access dashboard
+
+> https://devops-master01:30000/#!/login
+
+* dashboard login interface
+
+![dashboard-login](images/dashboard-login.png)
+
+* use command below to get token, copy and paste the token on login interface 
 
 ```
-$ kubectl proxy --address='0.0.0.0' &
-```
-
-* on your local laptop MacOSX: use browser to check dashboard work correctly
-
-```
-http://k8s-master1:30000
+$ kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
 ```
 
 ![dashboard](images/dashboard.png)
 
----
-[category](#category)
-
-#### install heapster addon
-
-* on k8s-master1: make master be able to schedule pods
+* on devops-master01: install heapster
 
 ```
-$ kubectl taint nodes --all node-role.kubernetes.io/master-
-node "k8s-master1" tainted
+$ kubectl apply -f kube-heapster/influxdb/
+service "monitoring-grafana" created
+serviceaccount "heapster" created
+deployment "heapster" created
+service "heapster" created
+deployment "monitoring-influxdb" created
+service "monitoring-influxdb" created
+
+$ kubectl apply -f kube-heapster/rbac/
+clusterrolebinding "heapster" created
+
+$ kubectl get pods --all-namespaces 
+NAMESPACE     NAME                                      READY     STATUS    RESTARTS   AGE
+kube-system   canal-hpn82                               3/3       Running   0          6m
+kube-system   heapster-65c5499476-gg2tk                 1/1       Running   0          2m
+kube-system   kube-apiserver-devops-master01            1/1       Running   0          6m
+kube-system   kube-controller-manager-devops-master01   1/1       Running   0          5m
+kube-system   kube-dns-6f4fd4bdf-vwbk8                  3/3       Running   0          6m
+kube-system   kube-proxy-mr6l8                          1/1       Running   0          6m
+kube-system   kube-scheduler-devops-master01            1/1       Running   0          6m
+kube-system   kubernetes-dashboard-7c7bfdd855-2slp2     1/1       Running   0          4m
+kube-system   monitoring-grafana-6774f65b56-mwdjv       1/1       Running   0          2m
+kube-system   monitoring-influxdb-59d57d4d58-xmrxk      1/1       Running   0          2m
+
+
+# wait for 5 minutes
+$ kubectl top nodes
+NAME              CPU(cores)   CPU%      MEMORY(bytes)   MEMORY%   
+devops-master01   242m         0%        1690Mi          0%        
 ```
 
-* on k8s-master1: install heapster addon, the performance monitor addon
+* heapster performance info will show on dashboard
 
-```
-$ kubectl create -f /root/kubeadm-ha/kube-heapster
-```
+> https://devops-master01:30000/#!/login
 
-* on k8s-master1: restart docker and kubelet service, to make heapster work immediately
-
-```
-$ systemctl restart docker kubelet
-```
-
-* on k8s-master1: check pods status
-
-```
-$ kubectl get all --all-namespaces -o wide
-NAMESPACE     NAME                                    READY     STATUS    RESTARTS   AGE       IP              NODE
-kube-system   heapster-783524908-kn6jd                1/1       Running   1          9m        10.244.0.111    k8s-master1
-kube-system   kube-apiserver-k8s-master1              1/1       Running   1          15m       192.168.60.71   k8s-master1
-kube-system   kube-controller-manager-k8s-master1     1/1       Running   1          15m       192.168.60.71   k8s-master1
-kube-system   kube-dns-3913472980-k9mt6               3/3       Running   3          16m       10.244.0.110    k8s-master1
-kube-system   kube-flannel-ds-3hhjd                   2/2       Running   3          13m       192.168.60.71   k8s-master1
-kube-system   kube-proxy-rzq3t                        1/1       Running   1          16m       192.168.60.71   k8s-master1
-kube-system   kube-scheduler-k8s-master1              1/1       Running   1          15m       192.168.60.71   k8s-master1
-kube-system   kubernetes-dashboard-2039414953-d46vw   1/1       Running   1          11m       10.244.0.109    k8s-master1
-kube-system   monitoring-grafana-3975459543-8l94z     1/1       Running   1          9m        10.244.0.112    k8s-master1
-kube-system   monitoring-influxdb-3480804314-72ltf    1/1       Running   1          9m        10.244.0.113    k8s-master1
-```
-
-* on your local laptop MacOSX: use browser to check dashboard, if it show CPU and Memory Usage info, then heapster work!
-
-```
-http://k8s-master1:30000
-```
+![heapster-dashboard](images/heapster-dashboard.png)
 
 ![heapster](images/heapster.png)
 
-* now we finish the first kubernetes master installation, and flannel dashboard heapster work on master correctly
+* now canal, dashboard, heapster had installed on the first master node
 
 ---
+
 [category](#category)
 
 ### kubernetes masters high avialiability configuration
 
 #### copy configuration files
 
-* on k8s-master1: copy /etc/kubernetes/ directory to k8s-master2 and k8s-master3
+* on devops-master01: copy `category/etc/kubernetes/pki` to devops-master02 and devops-master03
 
 ```
-scp -r /etc/kubernetes/ k8s-master2:/etc/
-scp -r /etc/kubernetes/ k8s-master3:/etc/
-```
+scp -r /etc/kubernetes/pki devops-master02:/etc/kubernetes/
 
-* on k8s-master2, k8s-master3: restart kubelet service, and make sure kubelet status is active (running)
-
-```
-$ systemctl daemon-reload && systemctl restart kubelet
-
-$ systemctl status kubelet
-● kubelet.service - kubelet: The Kubernetes Node Agent
-   Loaded: loaded (/etc/systemd/system/kubelet.service; enabled; vendor preset: disabled)
-  Drop-In: /etc/systemd/system/kubelet.service.d
-           └─10-kubeadm.conf
-   Active: active (running) since Tue 2017-06-27 16:24:22 CST; 1 day 17h ago
-     Docs: http://kubernetes.io/docs/
- Main PID: 2780 (kubelet)
-   Memory: 92.9M
-   CGroup: /system.slice/kubelet.service
-           ├─2780 /usr/bin/kubelet --kubeconfig=/etc/kubernetes/kubelet.conf --require-...
-           └─2811 journalctl -k -f
-```
-
-* on k8s-master2, k8s-master3: set environment variables $KUBECONFIG, make kubectl connect kubelet
-
-```
-$ vi ~/.bashrc
-export KUBECONFIG=/etc/kubernetes/admin.conf
-
-$ source ~/.bashrc
-```
-
-* on k8s-master2, k8s-master3: check nodes status, you will found that k8s-master2 and k8s-master3 are joined
-
-```
-$ kubectl get nodes -o wide
-NAME          STATUS    AGE       VERSION   EXTERNAL-IP   OS-IMAGE                KERNEL-VERSION
-k8s-master1   Ready     26m       v1.7.0    <none>        CentOS Linux 7 (Core)   3.10.0-514.6.1.el7.x86_64
-k8s-master2   Ready     2m        v1.7.0    <none>        CentOS Linux 7 (Core)   3.10.0-514.21.1.el7.x86_64
-k8s-master3   Ready     2m        v1.7.0    <none>        CentOS Linux 7 (Core)   3.10.0-514.21.1.el7.x86_64
+scp -r /etc/kubernetes/pki devops-master03:/etc/kubernetes/
 ```
 
 ---
 [category](#category)
 
-#### edit configuration files
+#### other master nodes init
 
-* on k8s-master2, k8s-master3: edit kube-apiserver.yaml file, replace ${HOST_IP} to current host's IP address
-
-```
-$ vi /etc/kubernetes/manifests/kube-apiserver.yaml
-    - --advertise-address=${HOST_IP}
-```
-
-* on k8s-master2, k8s-master3: edit kubelet.conf file, replace ${HOST_IP} to current host's IP address
+* on devops-master02: use kubeadm to init master cluster, make sure pod kube-apiserver-{current-node-name} is in running status
 
 ```
-$ vi /etc/kubernetes/kubelet.conf
-server: https://${HOST_IP}:6443
+# you will found that output token and discovery-token-ca-cert-hash are the same with devops-master01
+$ kubeadm init --config=kubeadm-init.yaml
+...
+  kubeadm join --token 7f276c.0741d82a5337f526 192.168.20.28:6443 --discovery-token-ca-cert-hash sha256:a4a1eaf725a0fc67c3028b3063b92e6af7f2eb0f4ae028f12b3415a6fd2d2a5e
 ```
 
-* on k8s-master2, k8s-master3: edit admin.conf file, replace ${HOST_IP} to current host's IP address
+* on devops-master03: use kubeadm to init master cluster, make sure pod kube-apiserver-{current-node-name} is in running status
 
 ```
-$ vi /etc/kubernetes/admin.conf
-    server: https://${HOST_IP}:6443
+# you will found that output token and discovery-token-ca-cert-hash are the same with devops-master01
+$ kubeadm init --config=kubeadm-init.yaml
+...
+  kubeadm join --token 7f276c.0741d82a5337f526 192.168.20.29:6443 --discovery-token-ca-cert-hash sha256:a4a1eaf725a0fc67c3028b3063b92e6af7f2eb0f4ae028f12b3415a6fd2d2a5e
 ```
 
-* on k8s-master2, k8s-master3: edit controller-manager.conf file, replace ${HOST_IP} to current host's IP address
+* on any kubernetes master nodes: check nodes status
 
 ```
-$ vi /etc/kubernetes/controller-manager.conf
-    server: https://${HOST_IP}:6443
+$ kubectl get nodes
+NAME              STATUS    ROLES     AGE       VERSION
+devops-master01   Ready     master    19m       v1.9.3
+devops-master02   Ready     master    4m        v1.9.3
+devops-master03   Ready     master    4m        v1.9.3
 ```
 
-* on k8s-master2, k8s-master3: edit scheduler.conf file, replace ${HOST_IP} to current host's IP address
+* on any kubernetes master nodes: check all pod status
 
 ```
-$ vi /etc/kubernetes/scheduler.conf
-    server: https://${HOST_IP}:6443
+$ kubectl get pods --all-namespaces -o wide 
+NAMESPACE     NAME                                      READY     STATUS    RESTARTS   AGE       IP              NODE
+kube-system   canal-cw8tw                               3/3       Running   4          3m        192.168.20.29   devops-master03
+kube-system   canal-d54hs                               3/3       Running   3          5m        192.168.20.28   devops-master02
+kube-system   canal-hpn82                               3/3       Running   5          17m       192.168.20.27   devops-master01
+kube-system   heapster-65c5499476-zwgnh                 1/1       Running   1          8m        10.244.0.7      devops-master01
+kube-system   kube-apiserver-devops-master01            1/1       Running   1          2m        192.168.20.27   devops-master01
+kube-system   kube-apiserver-devops-master02            1/1       Running   0          11s       192.168.20.28   devops-master02
+kube-system   kube-apiserver-devops-master03            1/1       Running   0          12s       192.168.20.29   devops-master03
+kube-system   kube-controller-manager-devops-master01   1/1       Running   1          16m       192.168.20.27   devops-master01
+kube-system   kube-controller-manager-devops-master02   1/1       Running   1          3m        192.168.20.28   devops-master02
+kube-system   kube-controller-manager-devops-master03   1/1       Running   1          2m        192.168.20.29   devops-master03
+kube-system   kube-dns-6f4fd4bdf-vwbk8                  3/3       Running   3          17m       10.244.0.2      devops-master01
+kube-system   kube-proxy-59pwn                          1/1       Running   1          5m        192.168.20.28   devops-master02
+kube-system   kube-proxy-jxt5s                          1/1       Running   1          3m        192.168.20.29   devops-master03
+kube-system   kube-proxy-mr6l8                          1/1       Running   1          17m       192.168.20.27   devops-master01
+kube-system   kube-scheduler-devops-master01            1/1       Running   1          16m       192.168.20.27   devops-master01
+kube-system   kube-scheduler-devops-master02            1/1       Running   1          3m        192.168.20.28   devops-master02
+kube-system   kube-scheduler-devops-master03            1/1       Running   1          2m        192.168.20.29   devops-master03
+kube-system   kubernetes-dashboard-7c7bfdd855-2slp2     1/1       Running   1          15m       10.244.0.3      devops-master01
+kube-system   monitoring-grafana-6774f65b56-mwdjv       1/1       Running   1          13m       10.244.0.4      devops-master01
+kube-system   monitoring-influxdb-59d57d4d58-xmrxk      1/1       Running   1          13m       10.244.0.6      devops-master01
 ```
 
-* on k8s-master1, k8s-master2, k8s-master3: restart docker and kubelet services
+* on any kubernetes master nodes: set all master nodes scheduable
 
 ```
-$ systemctl daemon-reload && systemctl restart docker kubelet
+$ kubectl taint nodes --all node-role.kubernetes.io/master-
+node "devops-master02" untainted
+node "devops-master03" untainted
 ```
 
----
-[category](#category)
-
-#### verify master high avialiability
-
-* on k8s-master1 or k8s-master2 or k8s-master3: check all master nodes pods startup status. apiserver controller-manager kube-scheduler proxy flannel running at k8s-master1, k8s-master2, k8s-master3 successfully.
+* on any kubernetes master nodes: scale the kube-system deployment to all master nodes
 
 ```
-$ kubectl get pod --all-namespaces -o wide | grep k8s-master2
-kube-system   kube-apiserver-k8s-master2              1/1       Running   1          55s       192.168.60.72   k8s-master2
-kube-system   kube-controller-manager-k8s-master2     1/1       Running   2          18m       192.168.60.72   k8s-master2
-kube-system   kube-flannel-ds-t8gkh                   2/2       Running   4          18m       192.168.60.72   k8s-master2
-kube-system   kube-proxy-bpgqw                        1/1       Running   1          18m       192.168.60.72   k8s-master2
-kube-system   kube-scheduler-k8s-master2              1/1       Running   2          18m       192.168.60.72   k8s-master2
+$ kubectl get deploy -n kube-system
+NAME                   DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+heapster               1         1         1            1           3d
+kube-dns               2         2         2            2           4d
+kubernetes-dashboard   1         1         1            1           3d
+monitoring-grafana     1         1         1            1           3d
+monitoring-influxdb    1         1         1            1           3d
 
-$ kubectl get pod --all-namespaces -o wide | grep k8s-master3
-kube-system   kube-apiserver-k8s-master3              1/1       Running   1          1m        192.168.60.73   k8s-master3
-kube-system   kube-controller-manager-k8s-master3     1/1       Running   2          18m       192.168.60.73   k8s-master3
-kube-system   kube-flannel-ds-tmqmx                   2/2       Running   4          18m       192.168.60.73   k8s-master3
-kube-system   kube-proxy-4stg3                        1/1       Running   1          18m       192.168.60.73   k8s-master3
-kube-system   kube-scheduler-k8s-master3              1/1       Running   2          18m       192.168.60.73   k8s-master3
-```
-
-* on k8s-master1 or k8s-master2 or k8s-master3: use kubectl logs to check controller-manager and scheduler's leader election result, only one is working
-
-```
-$ kubectl logs -n kube-system kube-controller-manager-k8s-master1
-$ kubectl logs -n kube-system kube-controller-manager-k8s-master2
-$ kubectl logs -n kube-system kube-controller-manager-k8s-master3
-
-$ kubectl logs -n kube-system kube-scheduler-k8s-master1
-$ kubectl logs -n kube-system kube-scheduler-k8s-master2
-$ kubectl logs -n kube-system kube-scheduler-k8s-master3
-```
-
-* on k8s-master1 or k8s-master2 or k8s-master3: check deployment
-
-```
-$ kubectl get deploy --all-namespaces
-NAMESPACE     NAME                   DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-kube-system   heapster               1         1         1            1           41m
-kube-system   kube-dns               1         1         1            1           48m
-kube-system   kubernetes-dashboard   1         1         1            1           43m
-kube-system   monitoring-grafana     1         1         1            1           41m
-kube-system   monitoring-influxdb    1         1         1            1           41m
-```
-
-* on k8s-master1 or k8s-master2 or k8s-master3: scale up kubernetes-dashboard and kube-dns replicas to 3, make all master running kubernetes-dashboard and kube-dns
-
-```
-$ kubectl scale --replicas=3 -n kube-system deployment/kube-dns
+# dns scale to all master nodes
+$ kubectl scale --replicas=2 -n kube-system deployment/kube-dns
 $ kubectl get pods --all-namespaces -o wide| grep kube-dns
-
-$ kubectl scale --replicas=3 -n kube-system deployment/kubernetes-dashboard
-$ kubectl get pods --all-namespaces -o wide| grep kubernetes-dashboard
-
-$ kubectl scale --replicas=3 -n kube-system deployment/heapster
-$ kubectl get pods --all-namespaces -o wide| grep heapster
-
-$ kubectl scale --replicas=3 -n kube-system deployment/monitoring-grafana
-$ kubectl get pods --all-namespaces -o wide| grep monitoring-grafana
-
-$ kubectl scale --replicas=3 -n kube-system deployment/monitoring-influxdb
-$ kubectl get pods --all-namespaces -o wide| grep monitoring-influxdb
 ```
 
 ---
+
 [category](#category)
 
 #### keepalived installation
 
-* on k8s-master1, k8s-master2, k8s-master3: install keepalived service
-
-```
-$ yum install -y keepalived
-
-$ systemctl enable keepalived && systemctl restart keepalived
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: backup keepalived config file
-
-```
-$ mv /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf.bak
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: create apiserver monitoring script, when apiserver failed keepalived will stop and virtual IP address will transfer to the other node
-
-```
-$ vi /etc/keepalived/check_apiserver.sh
-#!/bin/bash
-err=0
-for k in $( seq 1 10 )
-do
-    check_code=$(ps -ef|grep kube-apiserver | wc -l)
-    if [ "$check_code" = "1" ]; then
-        err=$(expr $err + 1)
-        sleep 5
-        continue
-    else
-        err=0
-        break
-    fi
-done
-if [ "$err" != "0" ]; then
-    echo "systemctl stop keepalived"
-    /usr/bin/systemctl stop keepalived
-    exit 1
-else
-    exit 0
-fi
-
-chmod a+x /etc/keepalived/check_apiserver.sh
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: check the network interface name
-
-```
-$ ip a | grep 192.168.60
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: edit keepalived settings:
-* state ${STATE}: is MASTER or BACKUP, only one node can set to MASTER
-* interface ${INTERFACE_NAME}: which network interfaces will virtual IP address bind on
-* mcast_src_ip ${HOST_IP}: current host IP address
-* priority ${PRIORITY}: for example (102 or 101 or 100)
-* ${VIRTUAL_IP}: the virtual IP address, here we set to 192.168.60.80
-
-```
-$ vi /etc/keepalived/keepalived.conf
-! Configuration File for keepalived
-global_defs {
-    router_id LVS_DEVEL
-}
-vrrp_script chk_apiserver {
-    script "/etc/keepalived/check_apiserver.sh"
-    interval 2
-    weight -5
-    fall 3  
-    rise 2
-}
-vrrp_instance VI_1 {
-    state ${STATE}
-    interface ${INTERFACE_NAME}
-    mcast_src_ip ${HOST_IP}
-    virtual_router_id 51
-    priority ${PRIORITY}
-    advert_int 2
-    authentication {
-        auth_type PASS
-        auth_pass 4be37dc3b4c90194d1600c483e10ad1d
-    }
-    virtual_ipaddress {
-        ${VIRTUAL_IP}
-    }
-    track_script {
-       chk_apiserver
-    }
-}
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: reboot keepalived service, and check virtual IP address work or not
+* on all kubernetes master nodes: install keepalived service
 
 ```
 $ systemctl restart keepalived
-$ ping 192.168.60.80
+
+$ ping 192.168.20.10
 ```
 
 ---
+
 [category](#category)
 
 #### nginx load balancer configuration
 
-* on k8s-master1, k8s-master2, k8s-master3: edit nginx-default.conf settings, replace ${HOST_IP} with k8s-master1, k8s-master2, k8s-master3's IP address. 
+* on all kubernetes master nodes: install nginx load balancer
 
 ```
-$ vi /root/kubeadm-ha/nginx-default.conf
-stream {
-    upstream apiserver {
-        server ${HOST_IP}:6443 weight=5 max_fails=3 fail_timeout=30s;
-        server ${HOST_IP}:6443 weight=5 max_fails=3 fail_timeout=30s;
-        server ${HOST_IP}:6443 weight=5 max_fails=3 fail_timeout=30s;
-    }
+$ docker-compose -f nginx-lb/docker-compose.yaml up -d
+```
 
-    server {
-        listen 8443;
-        proxy_connect_timeout 1s;
-        proxy_timeout 3s;
-        proxy_pass apiserver;
-    }
+* on all kubernetes master nodes: check nginx load balancer and keepalived
+
+```
+curl -k https://192.168.20.10:16443
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {
+    
+  },
+  "code": 403
 }
 ```
 
-* on k8s-master1, k8s-master2, k8s-master3: use docker to start up nginx
-
-```
-$ docker run -d -p 8443:8443 \
---name nginx-lb \
---restart always \
--v /root/kubeadm-ha/nginx-default.conf:/etc/nginx/nginx.conf \
-nginx
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: check keepalived and nginx
-
-```
-$ curl -L 192.168.60.80:8443 | wc -l
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-100    14    0    14    0     0  18324      0 --:--:-- --:--:-- --:--:-- 14000
-1
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: check keeplived logs, if it show logs below it means that virtual IP address bind on this host
-
-```
-$ systemctl status keepalived -l
-VRRP_Instance(VI_1) Sending gratuitous ARPs on ens160 for 192.168.60.80
-```
-
 ---
+
 [category](#category)
 
 #### kube-proxy configuration
 
-* on k8s-master1: edit kube-proxy settings to use keepalived virtual IP address
-
-```
-$ kubectl get -n kube-system configmap
-NAME                                 DATA      AGE
-extension-apiserver-authentication   6         4h
-kube-flannel-cfg                     2         4h
-kube-proxy                           1         4h
-```
-
-* on k8s-master1: edit configmap/kube-proxy settings, replaces the IP address to keepalived's virtual IP address
+- on any kubernetes master nodes: set kube-proxy server settings, make sure this settings use the keepalived virtual IP and nginx load balancer port (here is: https://192.168.20.10:16443)
 
 ```
 $ kubectl edit -n kube-system configmap/kube-proxy
-        server: https://192.168.60.80:8443
+        server: https://192.168.20.10:16443
 ```
 
-* on k8s-master1: check configmap/kube-proxy settings
+- on any kubernetes master nodes: delete all kube-proxy pod to restart it
 
 ```
-$ kubectl get -n kube-system configmap/kube-proxy -o yaml
-```
+$ kubectl get pods --all-namespaces -o wide | grep proxy
 
-* on k8s-master1: delete all kube-proxy pods, kube-proxy pods will re-create automatically
-
-```
-kubectl get pods --all-namespaces -o wide | grep proxy
-```
-
-* on k8s-master1, k8s-master2, k8s-master3: restart docker kubelet keepalived services
-
-```
-$ systemctl restart docker kubelet keepalived
+$ kubectl delete pod -n kube-system kube-proxy-XXX
 ```
 
 ---
+
 [category](#category)
 
-#### verfify master high avialiability with keepalived
-
-* on k8s-master1: check each master nodes pods status
-
-```
-$ kubectl get pods --all-namespaces -o wide | grep k8s-master1
-
-$ kubectl get pods --all-namespaces -o wide | grep k8s-master2
-
-$ kubectl get pods --all-namespaces -o wide | grep k8s-master3
-```
-
----
-[category](#category)
-
-### k8s-nodes join the kubernetes cluster
+### all nodes join the kubernetes cluster
 
 #### use kubeadm to join the cluster
-* on k8s-master1: make master nodes scheduling pods disabled
+
+- on all kubernetes worker nodes: use kubeadm to join the cluster, here we use the devops-master01 apiserver address and port.
 
 ```
-$ kubectl patch node k8s-master1 -p '{"spec":{"unschedulable":true}}'
-
-$ kubectl patch node k8s-master2 -p '{"spec":{"unschedulable":true}}'
-
-$ kubectl patch node k8s-master3 -p '{"spec":{"unschedulable":true}}'
+$ kubeadm join --token 7f276c.0741d82a5337f526 192.168.20.27:6443 --discovery-token-ca-cert-hash sha256:a4a1eaf725a0fc67c3028b3063b92e6af7f2eb0f4ae028f12b3415a6fd2d2a5e
 ```
 
-* on k8s-master1: list kubeadm token
+- on all kubernetes worker nodes: set the `/etc/kubernetes/bootstrap-kubelet.conf` server settings, make sure this settings use the keepalived virtual IP and nginx load balancer port (here is: https://192.168.20.10:16443)
 
 ```
-$ kubeadm token list
-TOKEN           TTL         EXPIRES   USAGES                   DESCRIPTION
-xxxxxx.yyyyyy   <forever>   <never>   authentication,signing   The default bootstrap token generated by 'kubeadm init'
+$ sed -i "s/192.168.20.27:6443/192.168.20.10:16443/g" /etc/kubernetes/bootstrap-kubelet.conf
+$ sed -i "s/192.168.20.28:6443/192.168.20.10:16443/g" /etc/kubernetes/bootstrap-kubelet.conf
+$ sed -i "s/192.168.20.29:6443/192.168.20.10:16443/g" /etc/kubernetes/bootstrap-kubelet.conf
+
+$ sed -i "s/192.168.20.27:6443/192.168.20.10:16443/g" /etc/kubernetes/kubelet.conf
+$ sed -i "s/192.168.20.28:6443/192.168.20.10:16443/g" /etc/kubernetes/kubelet.conf
+$ sed -i "s/192.168.20.29:6443/192.168.20.10:16443/g" /etc/kubernetes/kubelet.conf
+
+$ grep 192.168.20 /etc/kubernetes/*.conf 
+/etc/kubernetes/bootstrap-kubelet.conf:    server: https://192.168.20.10:16443
+/etc/kubernetes/kubelet.conf:    server: https://192.168.20.10:16443
+
+$ systemctl restart docker kubelet
 ```
 
-* on k8s-node1 ~ k8s-node8: use kubeadm to join the kubernetes cluster,  replace ${TOKEN} with token show ahead, replace ${VIRTUAL_IP} with keepalived's virtual IP address (192.168.60.80)
 
 ```
-$ kubeadm join --token ${TOKEN} ${VIRTUAL_IP}:8443
+kubectl get nodes
+NAME              STATUS    ROLES     AGE       VERSION
+devops-master01   Ready     master    46m       v1.9.3
+devops-master02   Ready     master    44m       v1.9.3
+devops-master03   Ready     master    44m       v1.9.3
+devops-node01     Ready     <none>    50s       v1.9.3
+devops-node02     Ready     <none>    26s       v1.9.3
+devops-node03     Ready     <none>    22s       v1.9.3
+devops-node04     Ready     <none>    17s       v1.9.3
 ```
 
----
-[category](#category)
-
-#### deploy nginx application to verify installation
-
-* on k8s-node1 ~ k8s-node8: check kubelet status
+- on any kubernetes master nodes: set the worker nodes labels
 
 ```
-$ systemctl status kubelet
-● kubelet.service - kubelet: The Kubernetes Node Agent
-   Loaded: loaded (/etc/systemd/system/kubelet.service; enabled; vendor preset: disabled)
-  Drop-In: /etc/systemd/system/kubelet.service.d
-           └─10-kubeadm.conf
-   Active: active (running) since Tue 2017-06-27 16:23:43 CST; 1 day 18h ago
-     Docs: http://kubernetes.io/docs/
- Main PID: 1146 (kubelet)
-   Memory: 204.9M
-   CGroup: /system.slice/kubelet.service
-           ├─ 1146 /usr/bin/kubelet --kubeconfig=/etc/kubernetes/kubelet.conf --require...
-           ├─ 2553 journalctl -k -f
-           ├─ 4988 /usr/sbin/glusterfs --log-level=ERROR --log-file=/var/lib/kubelet/pl...
-           └─14720 /usr/sbin/glusterfs --log-level=ERROR --log-file=/var/lib/kubelet/pl...
+kubectl label nodes devops-node01 role=worker
+kubectl label nodes devops-node02 role=worker
+kubectl label nodes devops-node03 role=worker
+kubectl label nodes devops-node04 role=worker
 ```
 
-* on k8s-master1: list nodes status
+#### verify kubernetes cluster high availiablity
+
+- NodePort testing
 
 ```
-$ kubectl get nodes -o wide
-NAME          STATUS                     AGE       VERSION
-k8s-master1   Ready,SchedulingDisabled   5h        v1.7.0
-k8s-master2   Ready,SchedulingDisabled   4h        v1.7.0
-k8s-master3   Ready,SchedulingDisabled   4h        v1.7.0
-k8s-node1     Ready                      6m        v1.7.0
-k8s-node2     Ready                      4m        v1.7.0
-k8s-node3     Ready                      4m        v1.7.0
-k8s-node4     Ready                      3m        v1.7.0
-k8s-node5     Ready                      3m        v1.7.0
-k8s-node6     Ready                      3m        v1.7.0
-k8s-node7     Ready                      3m        v1.7.0
-k8s-node8     Ready                      3m        v1.7.0
-```
-
-* on k8s-master1: deploy nginx service on kubernetes, it show that nginx service deploy on k8s-node5
-
-```
-$ kubectl run nginx --image=nginx --port=80
+# create a nginx deployment, replicas=3
+$ kubectl run nginx --image=nginx --replicas=3 --port=80
 deployment "nginx" created
 
-$ kubectl get pod -o wide -l=run=nginx
-NAME                     READY     STATUS    RESTARTS   AGE       IP           NODE
-nginx-2662403697-pbmwt   1/1       Running   0          5m        10.244.7.6   k8s-node5
-```
+# check nginx pod status
+$ kubectl get pods -l=run=nginx -o wide
+NAME                     READY     STATUS    RESTARTS   AGE       IP              NODE
+nginx-6c7c8978f5-558kd   1/1       Running   0          9m        10.244.77.217   devops-node03
+nginx-6c7c8978f5-ft2z5   1/1       Running   0          9m        10.244.172.67   devops-master01
+nginx-6c7c8978f5-jr29b   1/1       Running   0          9m        10.244.85.165   devops-node04
 
-* on k8s-master1: expose nginx services port
-
-```
-$ kubectl expose deployment nginx --port=80 --target-port=80 --type=NodePort
+# create nginx NodePort service
+$ kubectl expose deployment nginx --type=NodePort --port=80
 service "nginx" exposed
 
-$ kubectl get svc -l=run=nginx
-NAME      CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
-nginx     10.105.151.69   <nodes>       80:31639/TCP   43s
+# check nginx service status
+$ kubectl get svc -l=run=nginx -o wide
+NAME      TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE       SELECTOR
+nginx     NodePort   10.101.144.192   <none>        80:30847/TCP   10m       run=nginx
 
-$ curl k8s-master2:31639
+# check nginx NodePort service accessibility
+$ curl devops-master01:30847
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+    body {
+        width: 35em;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
+
+- pods connectivity testing
+
+```
+$ kubectl run nginx-server --image=nginx --port=80
+$ kubectl expose deployment nginx-server --port=80
+$ kubectl get pods -o wide -l=run=nginx-server
+NAME                            READY     STATUS    RESTARTS   AGE       IP           NODE
+nginx-server-6d64689779-lfcxc   1/1       Running   0          2m        10.244.5.7   devops-node03
+
+$ kubectl run nginx-client -ti --rm --image=alpine -- ash
+/ # wget nginx-server
+Connecting to nginx-server (10.102.101.78:80)
+index.html           100% |*****************************************|   612   0:00:00 ETA
+/ # cat index.html 
 <!DOCTYPE html>
 <html>
 <head>
@@ -1129,9 +1020,9 @@ Commercial support is available at
 </body>
 </html>
 
+
+$ kubectl delete deploy,svc nginx-server
 ```
 
-* congratulation! kubernetes high availiability cluster deploy successfully 😀
----
-[category](#category)
+- now kubernetes high availiability cluster setup successfully 😃
 
