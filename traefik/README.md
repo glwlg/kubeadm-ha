@@ -691,12 +691,6 @@ $ vi /etc/kubernetes/manifests/kube-apiserver.yaml
 systemctl restart kubelet
 ```
 
-- 在任意master节点上安装calico，安装calico网络组件后，nodes状态才会恢复正常
-
-```sh
-$ kubectl apply -f calico/
-```
-
 ---
 
 [返回目录](#目录)
@@ -807,6 +801,12 @@ kube-scheduler-k8s-master03            1/1       Running   1          54m       
 
 ```sh
 $ kubectl taint nodes --all node-role.kubernetes.io/master-
+```
+
+- 在任意master节点上安装calico
+
+```sh
+$ kubectl apply -f calico/
 ```
 
 - 在任意master节点上安装metrics-server，从v1.11.0开始，性能采集不再采用heapster采集pod性能数据，而是使用metrics-server
@@ -927,21 +927,6 @@ $ kubectl apply -f prometheus/
 > 成功安装后访问以下网址打开prometheus管理界面，查看相关性能采集数据: http://k8s-master-lb:30013/
 
 ![prometheus](images/prometheus.png)
-
-> 成功安装后访问以下网址打开grafana管理界面(账号密码都是`admin`)，查看相关性能采集数据: http://k8s-master-lb:30006/
-> 登录后，进入datasource设置界面，增加prometheus数据源，http://k8s-master-lb:30006/datasources
-
-![grafana-datasource](images/grafana-datasource.png)
-
-> 进入导入dashboard界面: http://k8s-master-lb:30006/dashboard/import 导入`heapster/grafana-dashboard`目录下的dashboard `Kubernetes App Metrics`和`Kubernetes cluster monitoring (via Prometheus)`
-
-![grafana-import](images/grafana-import.png)
-
-> 导入的dashboard性能呈现如下图:
-
-![grafana-cluster](images/grafana-cluster.png)
-
-![grafana-app](images/grafana-app.png)
 
 ---
 
